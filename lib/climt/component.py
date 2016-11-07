@@ -4,13 +4,13 @@ from numpy import *
 from parameters import Parameters
 from state      import State, KnownFields
 from plot       import Monitor, Plot
-from io         import IO
-from utils      import squeeze
+from inout      import IO
+#from utils      import squeeze
 from _grid      import get_nlev, get_nlat, get_nlon
 
-class Component:
+class Component(object):
     """
-    Abstract class defining methods inherited by all CliMT components.
+    Abstract class defininig methods inherited by all CliMT components.
     """
     def __init__(self, **kwargs):
 
@@ -36,12 +36,28 @@ class Component:
         else:
             self.UpdateFreq = self.Params['dt']
 
+        # Check if model can integrate
+        if 'CanIntegrate' in kwargs:
+                self.CanIntegrate = kwargs.pop('CanIntegrate')
+                if ('Integrates' in kwargs) and self.CanIntegrate: # this is a list of fields it can integrate
+                    self.Integrates = kwargs.pop('Integrates')
+                else:
+                    raise IndexError, '\n\n CanIntegrate keyword must be accompanied by \
+                        the Integrates keyword which provides a list of fields that this\
+                        Component accepts for integration.'
+        else:
+            self.CanIntegrate = False
+
         # Initialize State
         self.State = State(self, **kwargs)
         self.Grid = self.State.Grid
+        if 'grid' in kwargs: kwargs.pop('grid')
 
         # Dictionary to hold increments on prognos fields
+        # We need three increments for a third order Adams-Bashforth
         self.Inc = {}
+        self.IncOld = {}
+        self.IncOlder = {}
 
         # Initialize diagnostics
         self.compute(ForcedCompute=True)
@@ -72,6 +88,11 @@ class Component:
         """
         Updates component's diagnostics and increments
         """
+        # If this component can integrate, no need for computing
+        # increments
+        if self.CanIntegrate:
+            return
+            
         # See if it's time for an update; if not, skip rest
         if not ForcedCompute:
             freq = self.UpdateFreq
@@ -93,7 +114,7 @@ class Component:
         # List of arguments to be passed to extension
         args = [ Input[key] for key in self.ToExtension ]
 
-        # Call extension and build dictionary of ouputs
+        # Call extension and build dictionary of outputs
         OutputValues = self.driver(*args)
         if len(self.FromExtension) == 1: Output = {self.FromExtension[0]: OutputValues}
         else:                            Output = dict( zip(self.FromExtension, OutputValues ) )
@@ -129,13 +150,44 @@ class Component:
         if type(RunLength) is type(1.):
             NSteps = int(RunLength/self['dt'])
 
+
         for i in range(NSteps):
+
+
             # Add external increments
             for key in Inc.keys():
                 if key in self.Inc.keys():
                     self.Inc[key] += Inc[key]
                 else:
                     self.Inc[key] = Inc[key]
+
+        # If the component already has the capability to integrate,
+        # no need to call the integrator in State.advance
+            if self.CanIntegrate:
+                Input = []
+                InputTend = []
+                for key in self.Integrates:
+
+                    if key in self.State.Now:
+                        Input.append(self.State.Now[key].copy())
+                    else:
+                        raise IndexError, '\n\n Required field ' + key + ' not present in State for integration'
+
+                    temp = zeros(self.State.Now[key].shape)
+                    if key in self.Inc:
+                        temp = self.Inc.pop(key)
+
+
+                    InputTend.append(temp)
+
+
+                OutputValues = self.integrate(Input,InputTend)
+
+                if len(self.FromExtension) == 1: Output = {self.FromExtension[0]: OutputValues}
+                else:                            Output = dict( zip(self.FromExtension, OutputValues ) )
+
+                for key in self.FromExtension:
+                    self.State.Now[key] = Output[key]
 
             # Avance prognostics 1 time step
             self.State.advance(self)
@@ -152,12 +204,14 @@ class Component:
             dt   = self.Params['dt']
             time = self.State.ElapsedTime
             freq = self.Io.OutputFreq
-            if int(time/freq) != int((time-dt)/freq): self.write()
+            if int(time/freq) != int((time-dt)/freq):
+                self.write()
 
             # Refresh monitor, if it's time to
             if self.Monitor.Monitoring:
                 freq = self.Monitor.MonitorFreq
-                if int(time/freq) != int((time-dt)/freq): self.Monitor.refresh(self)
+                if int(time/freq) != int((time-dt)/freq):
+                    self.Monitor.refresh(self)
 
     def __call__(self,**kwargs):
         """
@@ -240,10 +294,16 @@ class Component:
         '''
         Returns shape of 3D arrays to be passed to extension.
         '''
-        return (self._getAxisLength('lev', **kwargs),
+        return (self._getAxisLength('lon', **kwargs),
                 self._getAxisLength('lat', **kwargs),
-                self._getAxisLength('lon', **kwargs))
+                self._getAxisLength('lev', **kwargs))
 
+    def getGrid(self):
+        '''
+        Returns Grid shape for external purposes, after init
+        '''
+
+        return self.Grid
 
     def _getAxisLength(self, AxisName, **kwargs):
         '''
@@ -256,10 +316,10 @@ class Component:
         # See if axis was supplied in input
         n = None
         if AxisName in kwargs:
-            if ndim(array(kwargs[AxisName])) == 0:
+            if array(kwargs[AxisName]).ndim == 0:
                 n = 1
             else:
-                assert ndim(array(kwargs[AxisName])) == 1, \
+                assert array(kwargs[AxisName]).ndim == 1, \
                     '\n\n ++++ CliMT.%s.init: input %s must be rank 1' % (self.Name,AxisName)
                 n = len(array(kwargs[AxisName]))
 
@@ -268,11 +328,11 @@ class Component:
             for key in kwargs:
                 if key in KnownFields:
                     if KnownFields[key][2] == '2D' and AxisName != 'lev':
-                        i = ['lat','lon'].index(AxisName)
+                        i = ['lon','lat'].index(AxisName)
                         try:    n = array(kwargs[key]).shape[i]
                         except: n = 1
                     elif KnownFields[key][2] == '3D':
-                        i = ['lev','lat','lon'].index(AxisName)
+                        i = ['lon','lat','lev'].index(AxisName)
                         try:    n = array(kwargs[key]).shape[i]
                         except: n = 1
 
@@ -294,8 +354,8 @@ class Component:
     def __getitem__(self, key):
         for obj in [self.Params, self.Grid, self.State]:
             if key in obj:
-                if type(obj[key]) is type('string'): return obj[key]
-                else: return squeeze(obj[key])
+                if isinstance(obj[key], basestring): return obj[key]
+                else: return squeeze(obj[key]).copy(order='F')
         raise IndexError,'\n\n CliMT.State: %s not in Params, Grid or State' % str(key)
 
     # Sets requested quantity in Params, Grid or State

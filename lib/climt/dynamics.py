@@ -2,7 +2,7 @@
 
 from component  import Component
 from numpy import *
-import string
+import numpy as np
 
 class dynamics(Component):
     """
@@ -40,11 +40,23 @@ class dynamics(Component):
     """
     def __init__(self, scheme = 'axisymmetric', **kwargs):
         # Initialize scheme-dependent attributes
-        if scheme not in ['axisymmetric','two_column']:
-            raise ValueError,'\n \n ++++ CliMT.dynamics: Scheme %s unknown' % scheme
-        exec('self.__%s_dynamics__init__()' % string.lower(scheme))
-        # Initialize fields etc. 
-        Component.__init__(self, **kwargs)
+#        if scheme not in ['axisymmetric','two_column']:
+#            raise ValueError,'\n \n ++++ CliMT.dynamics: Scheme %s unknown' % scheme
+#        exec('self.__%s_dynamics__init__()' % string.lower(scheme))
+
+        if scheme == 'axisymmetric':
+            self.__axisymmetric_dynamics__init__();
+            # Initialize fields etc.
+            Component.__init__(self, **kwargs);
+        if scheme == 'two_column':
+            self.__two_column_dynamics__init__();
+            # Initialize fields etc.
+            Component.__init__(self, **kwargs);
+        elif scheme == 'gfs':
+            args = self.__gfs_dynamics__init__(**kwargs)
+            # Initialize fields etc.
+            Component.__init__(self,**args);
+        else: raise ValueError,'\n \n ++++ CliMT.dynamics: Scheme %s unknown' % scheme
         
     def __axisymmetric_dynamics__init__(self):
         # Load extension
@@ -65,19 +77,83 @@ class dynamics(Component):
         self.Prognostic     = ['T','U','V','q']
         self.Diagnostic     = ['V','psi','theta','Te','W','TdotDyn','UdotDyn','VdotDyn','qdotDyn']
 
+
     def __two_column_dynamics__init__(self):
         # Load extension
         try: import _two_column_dynamics
         except: raise ImportError, \
-          '\n \n ++++ CliMT.dynamics: Could not load two-column scheme'
-        # Define some attributes
-        self.Name           = 'two_column_dynamics'
-        self.LevType       = 'p'
-        self.Extension      = _two_column_dynamics
-        self.driver         = _two_column_dynamics.driver
+            '\n \n ++++ CliMT.dynamics: Could not load two-column scheme'
+    # Define some attributes
+        self.Name = 'two_column_dynamics'
+        self.LevType = 'p'
+        self.Extension = _two_column_dynamics
+        self.driver = _two_column_dynamics.driver
         self.SteppingScheme = 'explicit'
-        self.ToExtension    = ['dt','Rd','Rv','Cpd','Cpv','g','p','z0','V','T','q']
-        self.FromExtension  = ['Vinc','Tinc','qinc','z0inc','W']
-        self.Required       = ['p','z0','V','T','q']
-        self.Prognostic     = ['V','T','q','z0']
-        self.Diagnostic     = ['W']
+        self.ToExtension = ['dt','Rd','Rv','Cpd','Cpv','g','p','z0','V','T','q']
+        self.FromExtension = ['Vinc','Tinc','qinc','z0inc','W']
+        self.Required = ['p','z0','V','T','q']
+        self.Prognostic = ['V','T','q','z0']
+        self.Diagnostic = ['W']
+
+
+    def __gfs_dynamics__init__(self, **kwargs):
+        # Load extension
+        try:
+            from _gfs_dynamics import _gfs_dynamics;
+
+            # If you want to define your grid dimensions, it has to be done
+            # somehow. For now, it reads from namelist
+            if 'nlat' in kwargs:
+                self.nlat = kwargs['nlat'];
+            else:
+                self.nlat = 94;
+            if 'nlon' in kwargs:
+                self.nlon = kwargs['nlon'];
+            else:
+                self.nlon = 192;
+            if 'dt' in kwargs:
+                self.timestep = kwargs['dt']
+            else:
+                self.timestep = 1200.0
+
+
+            _gfsDycore = _gfs_dynamics(self.nlon,self.nlat, timestep=self.timestep, climt_mode=True)
+            _gfsDycore.initModel()
+            u,v,t,tr,ps,p,pint = _gfsDycore.getResult()
+
+            lats = np.asarray(_gfsDycore.latitudes)[0,:]
+            lons = np.asarray(_gfsDycore.longitudes)[:,0]
+
+            args = {}
+
+            args['lat'] = lats
+            args['lon'] = lons
+            args['lev'] = 100000*np.linspace(1,0.003, _gfsDycore.numLevs)
+
+            args['p'] = p
+            args['pint'] = pint
+            args['ps'] = ps
+            args['U'] = u
+            args['V'] = v
+            args['T'] = t
+            args['q'] = tr
+            args['CanIntegrate'] = True
+            args['Integrates'] = ['U','V','T','q','ps']
+            args.update(kwargs)
+
+        except: raise ImportError, \
+         '\n \n ++++ CliMT.dynamics: Could not load GFS dynamical core'
+        # Define some attributes
+        self.Name           = 'gfs_dynamics'
+        self.LevType        = 'p'
+        self.Extension      = _gfsDycore
+        #self.driver         = _gfsDycore.driver
+        self.integrate      = _gfsDycore.integrateFields
+        self.SteppingScheme = 'explicit'
+        self.ToExtension    = ['U','V','T','q','ps']
+        self.FromExtension  = ['U','V','T','q','ps','p','pint']
+        self.Required       = ['U','V','T','q','ps','p','pint']
+        self.Diagnostic     = ['p','pint']
+        self.Prognostic     = ['U','V','T','q','ps']
+
+        return args

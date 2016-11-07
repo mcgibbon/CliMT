@@ -10,29 +10,29 @@ else:
 
 try:
     from netCDF4 import Dataset as open_file
-    gotNetCDF = True
-    NetCDFInterface = 'netCDF4'
+    got_netcdf = True
+    netcdf_interface = 'netCDF4'
 except:
-    gotNetCDF = False
+    got_netcdf = False
 
-if not gotNetCDF:
+if not got_netcdf:
     try:
         from Scientific.IO.NetCDF import NetCDFFile as open_file
-        gotNetCDF = True
-        NetCDFInterface = 'Scientific'
+        got_netcdf = True
+        netcdf_interface = 'Scientific'
     except:
-        gotNetCDF = False
+        got_netcdf = False
 
-if not gotNetCDF:
+if not got_netcdf:
     try:
         from PyNGL.Nio import open_file 
-        gotNetCDF = True
-        NetCDFInterface = 'PyNGL'
+        got_netcdf = True
+        netcdf_interface = 'PyNGL'
     except:
-        gotNetCDF = False
+        got_netcdf = False
 
-if gotNetCDF:
-    print 'Using %s interface for IO' % NetCDFInterface
+if got_netcdf:
+    print 'Using %s interface for IO' % netcdf_interface
 else:
     if not Lite: print '\n ++++ CliMT: WARNING: NetCDF interface ' \
           +'could not be loaded, so no file input or output !\n' 
@@ -42,73 +42,73 @@ from state import KnownFields
 class IO:
     """
     """
-    def __init__(self, Component, **kwargs):
+    def __init__(self, component, **kwargs):
         """
         """
-        if not gotNetCDF:
-            self.DoingOutput = False
-            self.Appending = False
+        if not got_netcdf:
+            self.doing_output = False
+            self.appending = False
             return
 
         # Restart file name
-        try:    self.RestartFileName = kwargs['RestartFile']
-        except: self.RestartFileName = None
+        try:    self.restart_filename = kwargs['RestartFile']
+        except: self.restart_filename = None
 
         # Output file name
-        try:    self.OutputFileName = kwargs['OutputFile']
-        except: self.OutputFileName = None
+        try:    self.output_filename = kwargs['OutputFile']
+        except: self.output_filename = None
 
         # If no fields are specified, ALL fields in State will
         # be output (see writeOuput)
-        try:    self.OutputFieldNames = kwargs['OutputFields']
-        except: self.OutputFieldNames = None
+        try:    self.output_fields = kwargs['OutputFields']
+        except: self.output_fields = None
 
         # If no output frequency specifed, output once daily
-        try:    self.OutputFreq = kwargs['OutputFreq']
-        except: self.OutputFreq = 86400.
+        try:    self.output_frequency = kwargs['OutputFreq']
+        except: self.output_frequency = 86400.
 
         # Decide if we're doing output
-        if  self.OutputFileName is not None:
-            self.DoingOutput = True
+        if  self.output_filename is not None:
+            self.doing_output = True
         else:
-            self.DoingOutput = False
+            self.doing_output = False
 
         # Decide if we're appending output to restart file
-        if self.OutputFileName is not None and \
-           self.OutputFileName == self.RestartFileName:
-            self.Appending = True
+        if self.output_filename is not None and \
+           self.output_filename == self.restart_filename:
+            self.appending = True
         else:
-            self.Appending = False
+            self.appending = False
 
         # Set of all fields in State
-        self.AllFields = \
-              list(set(Component.Required).union(Component.Diagnostic).union(Component.Prognostic))
+        self.all_fields = \
+              list(set(component.Required).union(component.Diagnostic).union(component.Prognostic))
 
         # Check that OutputFieldNames is a subset of AllFields
-        if self.OutputFieldNames is None:
-            OddFields = []
+        if self.output_fields is None:
+            odd_fields = []
         else:
-            OddFields = list(set(self.OutputFieldNames).difference(self.AllFields))
-        if len(OddFields) > 0: raise \
-           '\n +++ CliMT.IO.init: Output fields %s not recognized\n' % str(list(OddFields))
+            odd_fields = list(set(self.output_fields).difference(self.all_fields))
+        if len(odd_fields) > 0: raise \
+           '\n +++ CliMT.IO.init: Output fields %s not recognized\n' % str(list(odd_fields))
         
         # Inititalize output time index
-        self.OutputTimeIndex = 0
+        self.output_time_index = 0
 
 
     def readRestart(self, FieldNames, ParamNames, kwargs):
         """
         Reads required parameters and fields from restart file.
         """        
-        if not gotNetCDF: return kwargs
+        if not got_netcdf: return kwargs
 
         # Open file
         try:
-            File = open_file(self.RestartFileName,'r')
+            File = open_file(self.restart_filename, 'r')
         except IOError:  
             raise IOError, \
             '\n ++++ CliMT.IO.readRestart: Restart file %s not found or unreadable\n' \
-            % self.RestartFileName 
+            % self.restart_filename
             
         # Read elapsed time
         if 'ElapsedTime' not in kwargs:
@@ -138,11 +138,11 @@ class IO:
                           'not found in restart file, using default or supplied value\n'
 
          # If we're appending to restart file, shift time index forward
-        if self.Appending: self.OutputTimeIndex = len(File.variables['time'][:])
+        if self.appending: self.output_time_index = len(File.variables['time'][:])
         
         # Close file and return values
         File.close()
-        print ' Read from restart file %s\n' % self.RestartFileName
+        print ' Read from restart file %s\n' % self.restart_filename
         return kwargs
 
     def createOutputFile(self, State, Params):
@@ -150,19 +150,19 @@ class IO:
         Creates output file with all fields in State
         """
         # If we're not doing output or we're appending to restart file, skip creation
-        if not gotNetCDF or not self.DoingOutput or self.Appending: return
+        if not got_netcdf or not self.doing_output or self.appending: return
 
         # Create file
-        os.system('rm -f %s' % self.OutputFileName)
-        if NetCDFInterface == 'netCDF4':
-            File = open_file(self.OutputFileName,'w', format='NETCDF3_CLASSIC')
+        os.system('rm -f %s' % self.output_filename)
+        if netcdf_interface == 'netCDF4':
+            File = open_file(self.output_filename, 'w', format='NETCDF3_CLASSIC')
         else:
-            File = open_file(self.OutputFileName,'w')            
+            File = open_file(self.output_filename, 'w')
         # rename methods
-        if NetCDFInterface in  ['netCDF4', 'Scientific']:
+        if netcdf_interface in  ['netCDF4', 'Scientific']:
             createDimension = File.createDimension
             createVariable  = File.createVariable
-        elif NetCDFInterface == 'PyNGL':
+        elif netcdf_interface == 'PyNGL':
             createDimension = File.create_dimension
             createVariable  = File.create_variable
 
@@ -170,9 +170,9 @@ class IO:
         File.Conventions='COARDS'
         File.CliMTVersion = __version__
         File.RunStartDate = time.ctime()
-        File.NetCDFInterface = NetCDFInterface
-        if self.RestartFileName is not None:
-            File.RestartFile = self.RestartFileName
+        File.NetCDFInterface = netcdf_interface
+        if self.restart_filename is not None:
+            File.RestartFile = self.restart_filename
 
         # Store parameters as global attribs
         for Name in Params:
@@ -198,7 +198,7 @@ class IO:
         # Create output fields
         axes2D = ('time','lat','lon')
         axes3D = ('time','lev','lat','lon')
-        for key in self.AllFields:
+        for key in self.all_fields:
             exec('axes = axes%s' % KnownFields[key][2])
             var = createVariable(key, 'f', axes)
             var.long_name = KnownFields[key][0]
@@ -209,39 +209,39 @@ class IO:
     def writeOutput(self, Params, State):
         """
         """            
-        if not gotNetCDF or not self.DoingOutput: return
+        if not got_netcdf or not self.doing_output: return
 
         # Open file
-        File = open_file(self.OutputFileName,'a')
+        File = open_file(self.output_filename, 'a')
 
         # Decide what we're going to output
-        if State.ElapsedTime == 0. or self.OutputFieldNames == None:
-            OutputFieldNames = self.AllFields
+        if State.ElapsedTime == 0. or self.output_fields == None:
+            OutputFieldNames = self.all_fields
         else:
-            OutputFieldNames = self.OutputFieldNames
+            OutputFieldNames = self.output_fields
 
         # Write variables (as 'f' to reduce file size)
-        File.variables['time'][self.OutputTimeIndex] = State.ElapsedTime/86400.
+        File.variables['time'][self.output_time_index] = State.ElapsedTime / 86400.
         nlev = State.Grid['nlev']
         for key in OutputFieldNames:
             if KnownFields[key][2] == '2D':
                 out = State[key].copy()
-                File.variables[key][self.OutputTimeIndex,:,:] = out[:,:].astype('f')
+                File.variables[key][self.output_time_index, :, :] = out[:, :].astype('f')
             if KnownFields[key][2] == '3D':
                 out = State[key].copy()
                 out = out[nlev-1::-1,:,:]
-                File.variables[key][self.OutputTimeIndex,:,:,:] = out[:,:,:].astype('f')
+                File.variables[key][self.output_time_index, :, :, :] = out[:, :, :].astype('f')
 
         # Write time
-        File.variables['time'][self.OutputTimeIndex] = State.ElapsedTime/86400.
+        File.variables['time'][self.output_time_index] = State.ElapsedTime / 86400.
 
         # Write calday
         File.calday = Params['calday']
         
         # Advance time index
-        self.OutputTimeIndex += 1
+        self.output_time_index += 1
 
         # Close file
         File.close()
         print ' Wrote to file %s, time=%10.5f days' % \
-              (self.OutputFileName,State.ElapsedTime/86400.)
+              (self.output_filename, State.ElapsedTime / 86400.)

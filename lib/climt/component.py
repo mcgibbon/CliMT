@@ -14,14 +14,15 @@ class Component:
     """
 
     name = ''
+    required = []
 
     def __init__(self, **kwargs):
 
         # Initialize self.Fixed (subset of self.Prognostic which will NOT be time-marched)
         if 'Fixed' in kwargs:
-            self.Fixed = kwargs.pop('Fixed')
+            self.fixed = kwargs.pop('Fixed')
         else:
-            self.Fixed = []
+            self.fixed = []
 
         # Initialize I/O
         self.io = IO(self, **kwargs)
@@ -29,7 +30,7 @@ class Component:
         # Get values from restart file, if available
         if 'RestartFile' in kwargs:
             parameter_names = Parameters().value.keys()
-            field_names = self.Required
+            field_names = self.required
             kwargs = self.io.readRestart(field_names, parameter_names, kwargs)
 
         # Initialize scalar parameters
@@ -49,13 +50,13 @@ class Component:
         self.Inc = {}
 
         # Initialize diagnostics
-        self.compute(ForcedCompute=True)
+        self.compute(forced_compute=True)
 
         # Create output file
         self.io.createOutputFile(self.state, self.parameters.value)
 
         # Write out initial state
-        if not self.io.Appending: self.write()
+        if not self.io.appending: self.write()
 
         # Initialize plotting facilities
         self.plot = Plot()
@@ -75,12 +76,12 @@ class Component:
         except:
             pass
 
-    def compute(self, ForcedCompute=False):
+    def compute(self, forced_compute=False):
         """
         Updates component's diagnostics and increments
         """
         # See if it's time for an update; if not, skip rest
-        if not ForcedCompute:
+        if not forced_compute:
             freq = self.update_frequency
             time = self.state.ElapsedTime
             if int(time/freq) == int((time-self['dt'])/freq): return
@@ -110,7 +111,7 @@ class Component:
             self.Inc[key] = Output.pop(key+'inc')
 
         # Remove increments of Fixed variables
-        for key in self.Fixed:
+        for key in self.fixed:
             if key in self.Inc: self.Inc.pop(key)
             if key in Output: Output.pop(key)
 
@@ -121,7 +122,7 @@ class Component:
         # No further need for input dictionary
         del(Input)
 
-    def step(self, RunLength=1, Inc={}):
+    def step(self, run_length=1, Inc={}):
         """
         Advances component one timestep and writes to output file if necessary.
         Inc is an externally-specified set of increments added to the internally-computed
@@ -129,14 +130,14 @@ class Component:
         """
 
         # If RunLength is integer, interpret as number of time steps
-        if type(RunLength) is type(1):
-            NSteps = RunLength
+        if type(run_length) is type(1):
+            n_steps = run_length
 
         # If RunLength is float, interpret as length of run in seconds
-        if type(RunLength) is type(1.):
-            NSteps = int(RunLength/self['dt'])
+        if type(run_length) is type(1.):
+            n_steps = int(run_length / self['dt'])
 
-        for i in range(NSteps):
+        for i in range(n_steps):
             # Add external increments
             for key in Inc.keys():
                 if key in self.Inc.keys():
@@ -156,9 +157,9 @@ class Component:
                 self['calday'] -= self['daysperyear']
 
             # Write to file, if it's time to
-            dt   = self.parameters['dt']
+            dt = self.parameters['dt']
             time = self.state.ElapsedTime
-            freq = self.io.OutputFreq
+            freq = self.io.output_frequency
             if int(time/freq) != int((time-dt)/freq): self.write()
 
             # Refresh monitor, if it's time to
@@ -166,7 +167,7 @@ class Component:
                 freq = self.monitor.MonitorFreq
                 if int(time/freq) != int((time-dt)/freq): self.monitor.refresh(self)
 
-    def __call__(self,**kwargs):
+    def __call__(self, **kwargs):
         """
         # Provides a simple interface to extension, useful e.g. for diagnostics.
         """
@@ -186,15 +187,15 @@ class Component:
     def open(self, OutputFileName='CliMT.nc'):
         """
         """
-        if self.io.OutputFileName == OutputFileName:
+        if self.io.output_filename == OutputFileName:
             print '\n +++ ClimT.Io: File %s is currently open for output'% OutputFileName
             return
         else:
             print 'Opening %s for output'% OutputFileName
-            self.io.OutputFileName = OutputFileName
-            self.io.DoingOutput = True
-            self.io.Appending = False
-            self.io.OutputTimeIndex = 0
+            self.io.output_filename = OutputFileName
+            self.io.doing_output = True
+            self.io.appending = False
+            self.io.output_time_index = 0
             self.io.createOutputFile(self.state, self.parameters)
 
     def plot(self, *FieldKeys):

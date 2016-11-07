@@ -117,7 +117,7 @@ class federation(Component):
         # Adjust components' attributes
         for component in self.components:
             component.Monitoring = False
-            component.Io.OutputFreq = self.Io.OutputFreq
+            component.Io.OutputFreq = self.Io.output_frequency
             component.Fixed.extend(self.Fixed)
             if component.UpdateFreq == component['dt']: component.UpdateFreq = self['dt']
             component.Params     = self.Params
@@ -128,13 +128,13 @@ class federation(Component):
             # of need to set orb params in common block (yes, this is ugly)
             try: component.setOrbParams(**kwargs)
             except: pass
-        self.compute(ForcedCompute=True)
+        self.compute(forced_compute=True)
 
         # Create output file
         self.Io.createOutputFile(self.State, self.Params.value)
         
         # Write out initial state
-        if not self.Io.Appending: self.write()
+        if not self.Io.appending: self.write()
         
         # Initialize plotting facilities
         self.Plot = Plot()
@@ -148,7 +148,7 @@ class federation(Component):
         # Print out report
         #self.report()
 
-    def compute(self, ForcedCompute=False):
+    def compute(self, forced_compute=False):
         """
         Update federation's diagnostics and increments.
         """
@@ -168,7 +168,7 @@ class federation(Component):
         for key in self.Inc: self.Inc[key] = self.Inc[key]*0.
         for component in self.components:            
             # bring component's diagnostics and increments up to date
-            component.compute(ForcedCompute=ForcedCompute)
+            component.compute(forced_compute=forced_compute)
             # accumulate increments
             for key in component.Inc:
                 self.Inc[key] += component.Inc[key]

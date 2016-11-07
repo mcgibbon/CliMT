@@ -1,6 +1,11 @@
 .idea/*
 *.so
+*.swp
+*.swo
+*.swn
 *.pyc
 *.pyf
 build
 *~
+*.mod
+*.o

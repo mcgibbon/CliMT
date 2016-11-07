@@ -6,11 +6,11 @@ from numpy.distutils import fcompiler
 from distutils.dep_util import newer
 
 ## -------- set these
-KM = 26
+KM = 28
 JM = 1
 IM = 1
-NC_INC = '/usr/local/include'
-NC_LIB = '/usr/local/lib'
+NC_INC = '/usr/include'
+NC_LIB = '/usr/lib'
 ##----------------------
 
 if '--lite' in sys.argv:
@@ -22,8 +22,8 @@ else:
 Extensions = [
     {'name':'grid',
      'dir':'src/grid'},
-    {'name':'timestep',
-     'dir':'src/timestep'},
+    #{'name':'timestep',
+    # 'dir':'src/timestep'},
     {'name':'thermodyn',
      'dir':'src/thermodyn'},
     {'name':'emanuel_convection',
@@ -32,10 +32,10 @@ Extensions = [
      'dir':'src/convection/hard'},
     {'name':'sbm_convection',
      'dir':'src/convection/sbm'},
+     {'name':'two_column_dynamics',
+     'dir':'src/dynamics/two_column'},
     {'name':'axisymmetric_dynamics',
      'dir':'src/dynamics/axisymmetric'},
-    {'name':'two_column_dynamics',
-     'dir':'src/dynamics/two_column'},
     {'name':'slab_ocean',
      'dir':'src/ocean/slab_ocean'},
     {'name':'ccm3_radiation',
@@ -51,6 +51,8 @@ Extensions = [
      'dir':'src/radiation/chou'},
     {'name':'greygas_radiation',
      'dir':'src/radiation/greygas'},
+    {'name':'newgreygas_radiation',
+     'dir':'src/radiation/greynew'},
     {'name':'ozone',
      'dir':'src/radiation/ozone'},
     {'name':'insolation',
@@ -60,8 +62,19 @@ Extensions = [
      'cppflags':'-DPLON=%i -DPLEV=%i' % (IM,KM)},
     {'name':'simple_turbulence',
      'dir':'src/turbulence/simple'},
-    {'name':'rrtm_radiation_fortran',
-     'dir':'src/radiation/rrtm'}
+#    {'name':'rrtm_radiation_fortran',
+#     'dir':'src/radiation/rrtm'},
+    {'name':'gfs_dynamics',
+     'dir':'src/dynamics/gfs/gfs'},
+    {'name':'held_suarez',
+     'dir':'src/idealised/'},
+    {'name':'simple_physics',
+     'dir':'src/idealised/simple_physics'},
+    {'name':'dcmip',
+     'dir':'src/idealised/dcmip'
+    },
+    {'name':'emanuel_convection_new',
+     'dir':'src/convection/emanuel'}
     ]
 
 # define extensions that will be built when the --lite option is used
@@ -82,10 +95,10 @@ print 'Using %s compiler' % compiler
 # set some fortran compiler-dependent flags
 if compiler == 'gnu95':
     f77flags='-ffixed-line-length-132 -fdefault-real-8'
-    f90flags='-fdefault-real-8 -fno-range-check -ffree-form'
+    f90flags='-fdefault-real-8'
 elif compiler == 'intel' or compiler == 'intelem':
-    f77flags='-132 -r8'
-    f90flags='-132 -r8'
+    f77flags='-132 -r8 -w95 -w90 -mp'
+    f90flags='-r8 -w95 -mp'
 elif compiler == 'ibm':
     f77flags='-qautodbl=dbl4 -qsuffix=f=f:cpp=F -qfixed=132'
     f90flags='-qautodbl=dbl4 -qsuffix=f=f90:cpp=F90 -qfree=f90'
@@ -116,6 +129,7 @@ def getSources(dir):
             if 'ignore' not in ww[0]:
                 for pattern in ['*.f','*.F','*.f90','*.F90']:
                     Sources += glob.glob(os.path.join(ww[0],pattern))
+
     return Sources
 
 def buildNeeded(target,src):
@@ -134,8 +148,6 @@ def build_ext(name=None, dir=None, cppflags='', f77flags='', f90flags='', \
     #Builds an extension
     src = getSources(dir)
     target = '_%s.so' % name
-    print dir
-    print glob.glob(os.path.join(dir,'Driver.f*'))
     driver = glob.glob(os.path.join(dir,'Driver.f*'))[0]
     f77flags = '"%s %s"' % (cppflags,f77flags)
     f90flags = '"%s %s"' % (cppflags,f90flags)
@@ -146,7 +158,7 @@ def build_ext(name=None, dir=None, cppflags='', f77flags='', f90flags='', \
         # compile extension
         F2pyCommand = []
         F2pyCommand.append('f2py -c -m _%s' % name)
-        F2pyCommand.append('--fcompiler=%s --noopt' % compiler)
+        F2pyCommand.append('--fcompiler=%s' % compiler)
         F2pyCommand.append('-I%s' % dir)
         F2pyCommand.append('-I%s' % os.path.join(dir,'include'))
         F2pyCommand.append('-I%s' % os.path.join(dir,'src'))
@@ -172,10 +184,61 @@ def build_ext(name=None, dir=None, cppflags='', f77flags='', f90flags='', \
         os.system('mv -f _%s.so lib/climt' % name)
         os.system('rm -f _%s.pyf' % name)
 
-def setupClimt():
+#For now, just try to get the dycore to build, never mind uniformity
+def build_dycore(name=None, dir=None, cppflags='', f77flags='', f90flags='', \
+              lib='', libdir='', incdir=''):
 
+    print dir
+    os.chdir(dir)
+
+    os.system('make')
+    os.system('cp -f _%s.so ../../../../lib/climt/' % name)
+    os.chdir('../../../..')
+
+def setupClimt():
     # Build all extensions
-    for ext in Extensions: build_ext(**ext)
+    for ext in Extensions: 
+        if ext['name'] == 'gfs_dynamics' :
+            build_dycore(**ext)
+
+        elif ext['name'] == 'held_suarez':
+                os.system('cp %s/held_suarez.py lib/climt' % ext['dir'])
+
+        elif ext['name'] == 'dcmip':
+                curr_folder = os.getcwd()
+                os.chdir(ext['dir'])
+                os.system('python setup.py build_ext --inplace')
+                os.chdir(curr_folder)
+                os.system('cp %s/dcmip.so lib/climt' % ext['dir'])
+
+        elif ext['name'] == 'simple_physics':
+                curr_folder = os.getcwd()
+                os.chdir(ext['dir'])
+                os.system('rm _simple_physics.c _simple_physics_custom.c')
+                os.system('python setup.py build_ext --inplace')
+                os.chdir(curr_folder)
+                os.system('cp %s/_simple_physics.so %s/simple_physics.py \
+                          %s/_simple_physics_custom.so %s/simple_physics_custom.py lib/climt'\
+                          %(ext['dir'],ext['dir'],ext['dir'],ext['dir']))
+
+        elif ext['name'] == 'newgreygas_radiation':
+                curr_folder = os.getcwd()
+                os.chdir(ext['dir'])
+                os.system('rm _grey_gas.c')
+                os.system('python setup.py build_ext --inplace')
+                os.chdir(curr_folder)
+                os.system('cp %s/_new_grey.so lib/climt' %(ext['dir']))
+
+        elif ext['name'] == 'emanuel_convection_new':
+                curr_folder = os.getcwd()
+                os.chdir(ext['dir'])
+                os.system('rm _emanuel_convection.c')
+                os.system('python setup.py build_ext --inplace')
+                os.chdir(curr_folder)
+                os.system('cp %s/_emanuel_convection_new.so lib/climt' %(ext['dir']))
+
+        else:
+            build_ext(**ext)
 
     # Finish the setup
     # note: setup() cannot copy directories, and falls over
@@ -188,14 +251,14 @@ def setupClimt():
             DataFiles.append(File)
     print DataFiles
     os.chdir('../..')
-    
-    setup(name = "CliMT",
-          version = open('Version').read()[:-1],
-          description = "Climate modelling and diagnostics toolkit",
-          author = "Rodrigo Caballero",
+
+    setup(name         = "CliMT",
+          version      = open('Version').read()[:-1],
+          description  = "Climate modelling and diagnostics toolkit",
+          author       = "Rodrigo Caballero",
           author_email = "rodrigo@misu.su.se",
-          url = "http://people.su.se/~rcaba/climt",
-          packages = ['climt'],
+          url          = "http://people.su.se/~rcaba/climt",
+          packages    = ['climt'],
           package_dir = {'':'lib'},
           package_data = {'climt':['*.so']+DataFiles})
 

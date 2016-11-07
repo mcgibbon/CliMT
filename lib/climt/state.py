@@ -223,7 +223,7 @@ class State:
             # federated
             from ozone import ozone
             ozone = ozone(**kwargs) 
-            return ozone.State['o3']
+            return ozone.state['o3']
 
         # Cloud frac
         if 'cldf' == Field: return zeros(Shape,'d')
@@ -245,8 +245,8 @@ class State:
             from insolation import insolation
             insolation = insolation(**kwargs)
 
-        if 'zen'   == Field: return insolation.State['zen']
-        if 'solin' == Field: return insolation.State['solin']
+        if 'zen'   == Field: return insolation.state['zen']
+        if 'solin' == Field: return insolation.state['solin']
 
         # Surface upwelling LW
         if 'flus' == Field: return zeros(Shape,'d') -99. # set to missing as default

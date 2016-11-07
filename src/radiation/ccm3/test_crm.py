@@ -91,8 +91,8 @@ r=climt.radiation(scheme='ccm3')
 r(**par)
 
 
-print 'Zenith angle: %f' % r.State['zen']
-print 'Insolation:   %f' % r.State['solin']
+print 'Zenith angle: %f' % r.state['zen']
+print 'Insolation:   %f' % r.state['solin']
 
 # output
 lw=r.lwflx

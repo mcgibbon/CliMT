@@ -12,33 +12,38 @@ class Component:
     """
     Abstract class defining methods inherited by all CliMT components.
     """
+
+    name = ''
+
     def __init__(self, **kwargs):
 
         # Initialize self.Fixed (subset of self.Prognostic which will NOT be time-marched)
-        if 'Fixed' in kwargs: self.Fixed = kwargs.pop('Fixed')
-        else: self.Fixed = []
+        if 'Fixed' in kwargs:
+            self.Fixed = kwargs.pop('Fixed')
+        else:
+            self.Fixed = []
 
         # Initialize I/O
-        self.Io = IO(self, **kwargs)
+        self.io = IO(self, **kwargs)
 
         # Get values from restart file, if available
         if 'RestartFile' in kwargs:
-            ParamNames = Parameters().value.keys()
-            FieldNames = self.Required
-            kwargs = self.Io.readRestart(FieldNames, ParamNames, kwargs)
+            parameter_names = Parameters().value.keys()
+            field_names = self.Required
+            kwargs = self.io.readRestart(field_names, parameter_names, kwargs)
 
         # Initialize scalar parameters
-        self.Params  = Parameters(**kwargs)
+        self.parameters = Parameters(**kwargs)
 
         # Frequency with which compute() will be executed
         if 'UpdateFreq' in kwargs:
-            self.UpdateFreq = kwargs.pop('UpdateFreq')
+            self.update_frequency = kwargs.pop('UpdateFreq')
         else:
-            self.UpdateFreq = self.Params['dt']
+            self.update_frequency = self.parameters['dt']
 
         # Initialize State
-        self.State = State(self, **kwargs)
-        self.Grid = self.State.Grid
+        self.state = State(self, **kwargs)
+        self.grid = self.state.Grid
 
         # Dictionary to hold increments on prognos fields
         self.Inc = {}
@@ -47,26 +52,28 @@ class Component:
         self.compute(ForcedCompute=True)
 
         # Create output file
-        self.Io.createOutputFile(self.State, self.Params.value)
+        self.io.createOutputFile(self.state, self.parameters.value)
 
         # Write out initial state
-        if not self.Io.Appending: self.write()
+        if not self.io.Appending: self.write()
 
         # Initialize plotting facilities
-        self.Plot = Plot()
+        self.plot = Plot()
 
         # Initialize runtime monitor
-        self.Monitor = Monitor(self,**kwargs)
+        self.monitor = Monitor(self, **kwargs)
 
         # Notify user of unused input quantities
-        self._checkUnused(kwargs)
+        self._check_unused(kwargs)
 
         # Set some redundant attributes (mainly for backward compatibility)
-        self.nlon = self.Grid['nlon']
-        self.nlat = self.Grid['nlat']
-        self.nlev = self.Grid['nlev']
-        try: self.o3 = self.State['o3']
-        except: pass
+        self.nlon = self.grid['nlon']
+        self.nlat = self.grid['nlat']
+        self.nlev = self.grid['nlev']
+        try:
+            self.o3 = self.state['o3']
+        except:
+            pass
 
     def compute(self, ForcedCompute=False):
         """
@@ -74,21 +81,21 @@ class Component:
         """
         # See if it's time for an update; if not, skip rest
         if not ForcedCompute:
-            freq = self.UpdateFreq
-            time = self.State.ElapsedTime
+            freq = self.update_frequency
+            time = self.state.ElapsedTime
             if int(time/freq) == int((time-self['dt'])/freq): return
 
         # Set up union of State, Grid and Params
         Input = {}
-        for dic in [self.State.Now, self.Grid.value, self.Params.value]: Input.update(dic)
-        Input['UpdateFreq'] = self.UpdateFreq
+        for dic in [self.state.Now, self.grid.value, self.parameters.value]: Input.update(dic)
+        Input['UpdateFreq'] = self.update_frequency
 
         # For implicit time stepping, replace current time level with previous (old) time level
-        if self.SteppingScheme == 'implicit': Input.update(self.State.Old)
+        if self.SteppingScheme == 'implicit': Input.update(self.state.Old)
 
         # For semimplicit time stepping, append previous (old) time level to Input dict
         if self.SteppingScheme == 'semi-implicit':
-            for key in self.Prognostic: Input[key+'old'] = self.State.Old[key]
+            for key in self.Prognostic: Input[key+'old'] = self.state.Old[key]
 
         # List of arguments to be passed to extension
         args = [ Input[key] for key in self.ToExtension ]
@@ -108,7 +115,7 @@ class Component:
             if key in Output: Output.pop(key)
 
         # Update State
-        self.State.update(Output)
+        self.state.update(Output)
         for key in Output: exec('self.'+key+'=Output[key]')
 
         # No further need for input dictionary
@@ -138,7 +145,7 @@ class Component:
                     self.Inc[key] = Inc[key]
 
             # Avance prognostics 1 time step
-            self.State.advance(self)
+            self.state.advance(self)
 
             # Bring diagnostics and increments up to date
             self.compute()
@@ -149,24 +156,24 @@ class Component:
                 self['calday'] -= self['daysperyear']
 
             # Write to file, if it's time to
-            dt   = self.Params['dt']
-            time = self.State.ElapsedTime
-            freq = self.Io.OutputFreq
+            dt   = self.parameters['dt']
+            time = self.state.ElapsedTime
+            freq = self.io.OutputFreq
             if int(time/freq) != int((time-dt)/freq): self.write()
 
             # Refresh monitor, if it's time to
-            if self.Monitor.Monitoring:
-                freq = self.Monitor.MonitorFreq
-                if int(time/freq) != int((time-dt)/freq): self.Monitor.refresh(self)
+            if self.monitor.Monitoring:
+                freq = self.monitor.MonitorFreq
+                if int(time/freq) != int((time-dt)/freq): self.monitor.refresh(self)
 
     def __call__(self,**kwargs):
         """
         # Provides a simple interface to extension, useful e.g. for diagnostics.
         """
         # Re-initialize parameters, grid and state
-        self.Params  = Parameters(**kwargs)
-        self.State = State(self, **kwargs)
-        self.Grid = self.State.Grid
+        self.parameters  = Parameters(**kwargs)
+        self.state = State(self, **kwargs)
+        self.grid = self.state.Grid
         # Bring diagnostics up to date
         self.compute()
 
@@ -174,37 +181,37 @@ class Component:
         """
         Invokes write method of IO instance to write out current State
         """
-        self.Io.writeOutput(self.Params, self.State)
+        self.io.writeOutput(self.parameters, self.state)
 
     def open(self, OutputFileName='CliMT.nc'):
         """
         """
-        if self.Io.OutputFileName == OutputFileName:
+        if self.io.OutputFileName == OutputFileName:
             print '\n +++ ClimT.Io: File %s is currently open for output'% OutputFileName
             return
         else:
             print 'Opening %s for output'% OutputFileName
-            self.Io.OutputFileName = OutputFileName
-            self.Io.DoingOutput = True
-            self.Io.Appending = False
-            self.Io.OutputTimeIndex = 0
-            self.Io.createOutputFile(self.State, self.Params)
+            self.io.OutputFileName = OutputFileName
+            self.io.DoingOutput = True
+            self.io.Appending = False
+            self.io.OutputTimeIndex = 0
+            self.io.createOutputFile(self.state, self.parameters)
 
     def plot(self, *FieldKeys):
-        self.Plot(self, *FieldKeys)
+        self.plot(self, *FieldKeys)
 
     def setFigure(self, FigureNumber=None):
-        self.Plot.setFigure(FigureNumber)
+        self.plot.setFigure(FigureNumber)
 
     def closeFigure(self, FigureNumber=None):
-        self.Plot.closeFigure(FigureNumber)
+        self.plot.closeFigure(FigureNumber)
 
     def usage(self):
         print self.__doc__
 
     def report(self):
-        print 'CliMT component:\n    %s' % self.Name
-        keys = self.State.keys()
+        print 'CliMT component:\n    %s' % self.name
+        keys = self.state.keys()
         keys1 = []
         for i in range(len(keys)):
             if   keys[i] in self.Prognostic: keys1.append('%12s   %s' % (keys[i],'(prognostic)'))
@@ -215,7 +222,7 @@ class Component:
                                            keys1.append('%12s   %s' % (keys[i],'(Fixed)'))
         print 'State variables:\n %s' % '\n '.join( keys1 )
 
-    def _checkUnused(self,kwargs):
+    def _check_unused(self, kwargs):
         '''
         Notify of unused input quantities.
         '''
@@ -223,8 +230,8 @@ class Component:
         io_keys = ['RestartFile','OutputFile','OutputFreq','OutputFields','ElapsedTime']
         monitor_keys = ['MonitorFields','MonitorFreq']
         for key in kwargs:
-            if key not in self.Params  \
-            and key not in self.Grid   \
+            if key not in self.parameters  \
+            and key not in self.grid   \
             and key not in KnownFields \
             and key not in io_keys \
             and key not in monitor_keys:
@@ -233,8 +240,8 @@ class Component:
         if len(unused) > 0:
            if len(unused) == 1: suffix = 'y'
            else              : suffix = 'ies'
-           print '\n ++++ CliMT.'+self.Name+'.initialize: WARNING: Input quantit%s %s not used.\n' \
-                  % (suffix,str(list(unused)))
+           print '\n ++++ CliMT.'+self.name + '.initialize: WARNING: Input quantit%s %s not used.\n' \
+                                              % (suffix,str(list(unused)))
 
     def _getShape3D(self, **kwargs):
         '''
@@ -251,7 +258,7 @@ class Component:
         '''
         # Check input
         assert AxisName in ['lev','lat','lon'], \
-               '\n\n ++++ CliMT.%s: Axis name must be one of "lon", "lat", "lev"' % self.Name
+               '\n\n ++++ CliMT.{}: Axis name must be one of "lon", "lat", "lev"'.format(self.name)
 
         # See if axis was supplied in input
         n = None
@@ -260,7 +267,7 @@ class Component:
                 n = 1
             else:
                 assert ndim(array(kwargs[AxisName])) == 1, \
-                    '\n\n ++++ CliMT.%s.init: input %s must be rank 1' % (self.Name,AxisName)
+                    '\n\n ++++ CliMT.%s.init: input %s must be rank 1' % (self.name, AxisName)
                 n = len(array(kwargs[AxisName]))
 
         # If not, see if some field was supplied
@@ -286,13 +293,13 @@ class Component:
             n_ext = n
         assert n_ext == n, \
             '\n\n ++++ CliMT.%s.init: input %s has dimension %i but extension requires %i'% \
-            (self.Name, AxisName, n, n_ext)
+            (self.name, AxisName, n, n_ext)
 
         return n
 
     # Returns requested quantity from Params, Grid or State
     def __getitem__(self, key):
-        for obj in [self.Params, self.Grid, self.State]:
+        for obj in [self.parameters, self.grid, self.state]:
             if key in obj:
                 if type(obj[key]) is type('string'): return obj[key]
                 else: return squeeze(obj[key])
@@ -300,16 +307,17 @@ class Component:
 
     # Sets requested quantity in Params, Grid or State
     def __setitem__(self, key, value):
-        if key in self.Params:
-            self.Params[key] = value
+        if key in self.parameters:
+            self.parameters[key] = value
             return
-        if key in self.Grid:
-            self.Grid[key] = value
+        if key in self.grid:
+            self.grid[key] = value
             return
-        elif key in self.State and KnownFields[key][2] == '2D':
-            self.State[key]=reshape(value,self.Grid.Shape3D[1:3])
+        elif key in self.state and KnownFields[key][2] == '2D':
+            self.state[key]=reshape(value, self.grid.Shape3D[1:3])
             return
-        elif key in self.State and KnownFields[key][2] == '3D':
-            self.State[key]=reshape(value,self.Grid.Shape3D)
+        elif key in self.state and KnownFields[key][2] == '3D':
+            self.state[key]=reshape(value, self.grid.Shape3D)
             return
-        else: raise IndexError,'\n\n CliMT.State: %s not in Params, Grid or State' % str(key)
+        else:
+            raise IndexError, '\n\n CliMT.State: %s not in Params, Grid or State' % str(key)

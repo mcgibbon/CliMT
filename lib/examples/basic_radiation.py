@@ -31,7 +31,7 @@ clwp[len(cldf)/3] = 100.
 #--- compute radiative fluxes and heating rates
 r(p=p, ps=ps, T=T, Ts=Ts, q=q, cldf=cldf, clwp=clwp)
 
-if 'SwToa' in r.State.keys(): print r['SwToa'],r['LwToa'],r['SwSrf'],r['LwSrf']
+if 'SwToa' in r.state.keys(): print r['SwToa'],r['LwToa'],r['SwSrf'],r['LwSrf']
 print r['SwToaCf'],r['LwToaCf'],(r['solin']-r['SwToa'])/r['solin']
 
 #--- print out results

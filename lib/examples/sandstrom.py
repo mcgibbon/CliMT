@@ -50,9 +50,9 @@ ins = climt.insolation(lat=kwargs['lat'], avg='annual')
 CoolingRate = 0./86400.
 
 for l in range(Nsteps):
-    fed.State['SrfRadFlx'] = ins.State['solin']*0.5 - fed['stebol']*fed.State['Ts']**4
+    fed.state['SrfRadFlx'] = ins.State['solin']*0.5 - fed['stebol']*fed.State['Ts']**4
     fed.step()
-    fed.State['T'][4:nlev,:,:] -= CoolingRate*kwargs['dt']*ones((nlev-4,nlat,1))
+    fed.state['T'][4:nlev,:,:] -= CoolingRate*kwargs['dt']*ones((nlev-4,nlat,1))
 
 try:
     from matplotlib.pylab import *

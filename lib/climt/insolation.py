@@ -60,15 +60,15 @@ class insolation(Component):
         self.setOrbParams(**kwargs)
         self.compute()
         # Check input
-        errmsg='\n +++ CliMT.insolation: make sure 0 <= calday <= %s\n' % self.Params['daysperyear']
-        assert 0 <= self.Params['calday'] <= self.Params['daysperyear'], errmsg
+        errmsg='\n +++ CliMT.insolation: make sure 0 <= calday <= %s\n' % self.parameters['daysperyear']
+        assert 0 <= self.parameters['calday'] <= self.parameters['daysperyear'], errmsg
 
     # Sets orbital parameters
     def setOrbParams(self, **kwargs):
 
         # set orb params by orb_year
         if 'orb_year' in kwargs: orb_year = kwargs['orb_year']
-        else: orb_year = self.Params['orb_year']
+        else: orb_year = self.parameters['orb_year']
         self.setOrbParamsByYear(orb_year=orb_year)
 
         # if provided, set each orb param separately, overriding those set by orb_year
@@ -112,9 +112,9 @@ class insolation(Component):
 
         # Check input
         for key in ['calday','daysperyear']:
-            if key in kwargs: self.Params[key] = kwargs[key]
-        errmsg='\n +++ CliMT.insolation: make sure 0 <= calday <= %s\n'%self.Params['daysperyear']
-        assert 0. <= self.Params['calday'] <= self.Params['daysperyear'], errmsg
+            if key in kwargs: self.parameters[key] = kwargs[key]
+        errmsg='\n +++ CliMT.insolation: make sure 0 <= calday <= %s\n'%self.parameters['daysperyear']
+        assert 0. <= self.parameters['calday'] <= self.parameters['daysperyear'], errmsg
         
         # Reset orb params
         self.setOrbParams(**kwargs)

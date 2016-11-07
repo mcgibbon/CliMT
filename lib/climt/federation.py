@@ -143,7 +143,7 @@ class federation(Component):
         self.Monitor = Monitor(self,**kwargs)
 
         # Notify user of unused input quantities
-        self._checkUnused(kwargs)
+        self._check_unused(kwargs)
                 
         # Print out report
         #self.report()
